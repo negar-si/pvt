@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>آزمون هوشیاری روانی‌حرکتی (PVT)</title>
+<style>
+  :root { --bg:#f5f5f2; --fg:#1d1d1b; --muted:#6b6b66; --card:#fff; --line:#d8d8d2; --accent:#c0392b; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg:#16161a; --fg:#ececea; --muted:#9a9a94; --card:#202026; --line:#34343c; --accent:#ff6b5b; }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--fg); font-family: Tahoma, "Vazirmatn", system-ui, sans-serif; line-height: 1.9; }
+  .screen { display: none; min-height: 100%; padding: 24px; max-width: 760px; margin: 0 auto; }
+  .screen.active { display: block; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  h1 { font-size: 1.4rem; } h2 { font-size: 1.1rem; }
+  label { display: block; margin: 10px 0 4px; }
+  input[type=text] { width: 100%; padding: 10px; font-size: 1rem; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+  button { font: inherit; padding: 10px 22px; border-radius: 8px; border: 1px solid var(--line); background: var(--fg); color: var(--bg); cursor: pointer; margin: 6px 0 6px 8px; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.secondary { background: transparent; color: var(--fg); }
+  #test { padding: 0; max-width: none; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #test.active { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; cursor: pointer; }
+  #display { direction: ltr; font-family: "Courier New", monospace; font-size: clamp(64px, 22vw, 180px); letter-spacing: .05em;
+             color: var(--muted); border: 2px solid var(--line); border-radius: 16px; padding: 12px 40px; min-width: 60vw; text-align: center; }
+  #display.on { color: var(--accent); border-color: var(--accent); }
+  #display.fb { color: var(--fg); }
+  #timeLeft { position: fixed; top: 12px; left: 16px; color: var(--muted); direction: ltr; font-variant-numeric: tabular-nums; }
+  #hint { margin-top: 18px; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+  th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: center; }
+  td.num { direction: ltr; }
+  .small { color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+
+<!-- صفحهٔ شروع -->
+<section id="start" class="screen active">
+  <h1>آزمون هوشیاری روانی‌حرکتی (PVT)</h1>
+  <div class="card">
+    <h2>راهنما</h2>
+    <p>روی صفحه یک شمارندهٔ میلی‌ثانیه‌ای (۰۰۰۰) دیده می‌شود. هر زمان شمارنده شروع به شمارش کرد، <b>هرچه سریع‌تر</b> کلید <b>فاصله (Space)</b> را بزنید (در موبایل: روی صفحه لمس کنید). شمارنده می‌ایستد و زمان واکنش شما حدود ۱٫۵ ثانیه نمایش داده می‌شود.</p>
+    <p>اگر پیش از شروع شمارنده کلید را بزنید، «پاسخ زودهنگام» ثبت می‌شود؛ پس منتظر بمانید. مدت آزمون <span id="durLabel"></span> دقیقه است. لطفاً در محیط آرام و ترجیحاً با رایانه انجام دهید.</p>
+  </div>
+  <div class="card">
+    <label for="pid">کد شرکت‌کننده</label>
+    <input type="text" id="pid" autocomplete="off">
+    <label><input type="checkbox" id="consent"> با شرکت در این آزمون و ثبت داده‌های بی‌نام آن موافقم.</label>
+    <button id="startBtn" disabled>شروع آزمون</button>
+  </div>
+</section>
+
+<!-- صفحهٔ آزمون -->
+<section id="test" class="screen">
+  <div id="timeLeft"></div>
+  <div id="display">0000</div>
+  <div id="hint">منتظر شمارنده بمانید…</div>
+</section>
+
+<!-- صفحهٔ پایان -->
+<section id="end" class="screen">
+  <h1>آزمون تمام شد</h1>
+  <div class="card" id="summaryCard"></div>
+  <div class="card">
+    <h2>میانگین در هر دقیقه</h2>
+    <div id="perMinute"></div>
+  </div>
+  <div class="card">
+    <button id="dlTrials">دانلود داده‌های خام (CSV)</button>
+    <button id="dlSummary" class="secondary">دانلود خلاصه (CSV)</button>
+    <p class="small" id="sendStatus"></p>
+  </div>
+</section>
+
+<script>
+/* ===================== تنظیمات (بر پایهٔ Dinges & Powell, 1985) ===================== */
+const CFG = {
+  DURATION_MS: 10 * 60 * 1000, // مدت آزمون: ۱۰ دقیقه
+  ISI_MIN: 1000,               // کمترین فاصلهٔ بین محرک‌ها: ۱ ثانیه (در مقاله ۱ تا ۱۰ ثانیه)
+  ISI_MAX: 10000,              // بیشترین فاصله: ۱۰ ثانیه
+  FEEDBACK_MS: 1500,           // نمایش RT پس از پاسخ: ۱٫۵ ثانیه
+  MAX_RT: 10000,               // اگر تا این زمان پاسخی نیامد، شمارنده می‌ایستد (بی‌پاسخ)
+  FALSE_START_MS: 100,         // RT برابر یا کمتر از ۱۰۰ms: غیرممکن/شروع کاذب، حذف از تحلیل
+  LAPSE_MS: 500,               // آستانهٔ لپس (از ادبیات بعدی، نه از این مقاله)
+  EXCLUDE_FIRST_LAST: true,    // حذف اولین و آخرین RT (آلودگی ناشی از شروع/پایان آزمون)
+  ENDPOINT: ""                 // اختیاری: آدرس Google Apps Script برای ارسال خودکار داده
+};
+
+/* ===================== وضعیت ===================== */
+const $ = id => document.getElementById(id);
+let state = "idle";           // idle | waiting | running | feedback | done
+let testStart = 0, onset = 0, curISI = 0;
+let isiTimer = null, fbTimer = null, rafId = null;
+let trials = [];              // آزمایه‌های دارای محرک
+let events = [];              // پاسخ‌های زودهنگام
+let analyzed = [], summary = null, pid = "";
+
+$("durLabel").textContent = (CFG.DURATION_MS / 60000).toString();
+
+function show(id) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  $(id).classList.add("active");
+}
+const rand = (a, b) => a + Math.random() * (b - a);
+const pad4 = n => String(Math.min(9999, Math.max(0, Math.round(n)))).padStart(4, "0");
+
+/* ===================== جریان آزمون ===================== */
+$("pid").addEventListener("input", checkReady);
+$("consent").addEventListener("change", checkReady);
+function checkReady() { $("startBtn").disabled = !($("pid").value.trim() && $("consent").checked); }
+
+$("startBtn").addEventListener("click", () => {
+  pid = $("pid").value.trim();
+  trials = []; events = [];
+  show("test");
+  testStart = performance.now();
+  tickClock();
+  scheduleStimulus();
+});
+
+function tickClock() {
+  if (state === "done") return;
+  const left = Math.max(0, CFG.DURATION_MS - (performance.now() - testStart));
+  const m = Math.floor(left / 60000), s = Math.floor((left % 60000) / 1000);
+  $("timeLeft").textContent = m + ":" + String(s).padStart(2, "0");
+  setTimeout(tickClock, 250);
+}
+
+function scheduleStimulus() {
+  if (performance.now() - testStart >= CFG.DURATION_MS) return finish();
+  state = "waiting";
+  $("display").className = "";
+  $("display").textContent = "0000";
+  $("hint").textContent = "منتظر شمارنده بمانید…";
+  curISI = rand(CFG.ISI_MIN, CFG.ISI_MAX);
+  isiTimer = setTimeout(startStimulus, curISI);
+}
+
+function startStimulus() {
+  // زمان آغاز دقیقاً در همان فریمی ثبت می‌شود که شمارنده برای اولین بار نمایش داده می‌شود
+  requestAnimationFrame(ts => {
+    onset = performance.now();
+    state = "running";
+    $("display").className = "on";
+    $("hint").textContent = "الان!";
+    loop();
+  });
+}
+
+function loop() {
+  if (state !== "running") return;
+  const el = performance.now() - onset;
+  if (el >= CFG.MAX_RT) { return record(CFG.MAX_RT, true); }
+  $("display").textContent = pad4(el);
+  rafId = requestAnimationFrame(loop);
+}
+
+function record(rt, noResponse) {
+  cancelAnimationFrame(rafId);
+  state = "feedback";
+  trials.push({
+    n: trials.length + 1,
+    onset: onset - testStart,
+    isi: curISI,
+    rt: rt,
+    noResponse: !!noResponse
+  });
+  $("display").className = "fb";
+  $("display").textContent = pad4(rt);
+  $("hint").textContent = noResponse ? "پاسخی ثبت نشد" : "زمان واکنش شما (میلی‌ثانیه)";
+  fbTimer = setTimeout(scheduleStimulus, CFG.FEEDBACK_MS);
+}
+
+function respond(t) {
+  if (state === "waiting") {
+    events.push({ time: t - testStart, type: "early_response" });
+    $("hint").textContent = "زودهنگام! منتظر شمارنده بمانید.";
+  } else if (state === "running") {
+    record(t - onset, false);
+  }
+}
+
+document.addEventListener("keydown", e => {
+  if (e.code === "Space" && !e.repeat && $("test").classList.contains("active")) {
+    e.preventDefault();
+    respond(performance.now());
+  }
+});
+$("test").addEventListener("pointerdown", e => { e.preventDefault(); respond(performance.now()); });
+
+function finish() {
+  state = "done";
+  clearTimeout(isiTimer); clearTimeout(fbTimer); cancelAnimationFrame(rafId);
+  analyzed = markExclusions(trials);
+  summary = summarize(analyzed);
+  renderEnd();
+  show("end");
+  sendToServer();
+}
+
+/* ===================== تحلیل ===================== */
+function markExclusions(arr) {
+  return arr.map((x, i) => {
+    const o = Object.assign({}, x, { excluded: false, reason: "" });
+    if (CFG.EXCLUDE_FIRST_LAST && (i === 0 || i === arr.length - 1)) { o.excluded = true; o.reason = "first_last"; }
+    else if (!o.noResponse && o.rt <= CFG.FALSE_START_MS) { o.excluded = true; o.reason = "too_fast"; }
+    o.minute = Math.floor(o.onset / 60000) + 1;
+    return o;
+  });
+}
+const mean = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : NaN;
+const median = a => {
+  if (!a.length) return NaN;
+  const s = [...a].sort((x, y) => x - y), m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+function stats(rts) {
+  const s = [...rts].sort((a, b) => a - b);
+  const k = Math.max(1, Math.ceil(s.length * 0.1));
+  return {
+    n: rts.length,
+    meanRT: mean(rts),
+    medianRT: median(rts),
+    fastest10: s.length ? mean(s.slice(0, k)) : NaN,
+    slowest10: s.length ? mean(s.slice(-k)) : NaN,
+    lapses: rts.filter(r => r > CFG.LAPSE_MS).length,
+    meanRecip: mean(rts.map(r => 1000 / r))
+  };
+}
+function summarize(t) {
+  const valid = t.filter(x => !x.excluded);
+  const total = stats(valid.map(x => x.rt));
+  total.earlyResponses = events.length;
+  total.excludedTrials = t.length - valid.length;
+  total.totalTrials = t.length;
+  const minutes = Math.round(CFG.DURATION_MS / 60000);
+  total.perMinute = [];
+  for (let m = 1; m <= minutes; m++) {
+    const sub = valid.filter(x => x.minute === m).map(x => x.rt);
+    total.perMinute.push(Object.assign({ minute: m }, stats(sub)));
+  }
+  return total;
+}
+
+/* ===================== نمایش نتیجه ===================== */
+const f = (v, d = 0) => Number.isFinite(v) ? v.toFixed(d) : "—";
+function renderEnd() {
+  const s = summary;
+  $("summaryCard").innerHTML =
+    "<table><tbody>" +
+    "<tr><td>تعداد آزمایه‌های تحلیل‌شده</td><td class='num'>" + s.n + " / " + s.totalTrials + "</td></tr>" +
+    "<tr><td>میانگین RT (ms)</td><td class='num'>" + f(s.meanRT) + "</td></tr>" +
+    "<tr><td>میانهٔ RT (ms)</td><td class='num'>" + f(s.medianRT) + "</td></tr>" +
+    "<tr><td>۱۰٪ سریع‌ترین (ms)</td><td class='num'>" + f(s.fastest10) + "</td></tr>" +
+    "<tr><td>۱۰٪ کندترین (ms)</td><td class='num'>" + f(s.slowest10) + "</td></tr>" +
+    "<tr><td>لپس (RT &gt; " + CFG.LAPSE_MS + ")</td><td class='num'>" + s.lapses + "</td></tr>" +
+    "<tr><td>میانگین ۱/RT (۱/ثانیه)</td><td class='num'>" + f(s.meanRecip, 3) + "</td></tr>" +
+    "<tr><td>پاسخ زودهنگام</td><td class='num'>" + s.earlyResponses + "</td></tr>" +
+    "</tbody></table>";
+  let h = "<table><thead><tr><th>دقیقه</th><th>n</th><th>میانگین RT</th><th>لپس</th></tr></thead><tbody>";
+  s.perMinute.forEach(r => { h += "<tr><td>" + r.minute + "</td><td class='num'>" + r.n + "</td><td class='num'>" + f(r.meanRT) + "</td><td class='num'>" + r.lapses + "</td></tr>"; });
+  $("perMinute").innerHTML = h + "</tbody></table>";
+}
+
+/* ===================== خروجی ===================== */
+function deviceInfo() {
+  return {
+    ua: navigator.userAgent,
+    screen: screen.width + "x" + screen.height,
+    dpr: window.devicePixelRatio,
+    touch: ("ontouchstart" in window) || navigator.maxTouchPoints > 0
+  };
+}
+function csvEscape(v) { v = String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+function toCSV(rows) { return "\ufeff" + rows.map(r => r.map(csvEscape).join(",")).join("\n"); }
+function download(name, text) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+}
+function trialRows() {
+  const d = deviceInfo(), stamp = new Date().toISOString();
+  const rows = analyzed.map(x => [pid, stamp, "trial", x.n, x.minute, Math.round(x.onset), Math.round(x.isi), x.rt.toFixed(1), x.noResponse ? 1 : 0, x.excluded ? 1 : 0, x.reason, d.touch ? "touch" : "no-touch", d.screen, d.ua]);
+  events.forEach((e, i) => rows.push([pid, stamp, "early_response", i + 1, Math.floor(e.time / 60000) + 1, Math.round(e.time), "", "", "", "", "", d.touch ? "touch" : "no-touch", d.screen, d.ua]));
+  return rows;
+}
+const TRIAL_HEADER = ["participant", "timestamp", "type", "index", "minute", "onset_ms", "isi_ms", "rt_ms", "no_response", "excluded", "reason", "input", "screen", "user_agent"];
+
+$("dlTrials").addEventListener("click", () => download("pvt_trials_" + pid + ".csv", toCSV([TRIAL_HEADER].concat(trialRows()))));
+$("dlSummary").addEventListener("click", () => {
+  const s = summary;
+  const head = ["participant", "n", "mean_rt", "median_rt", "fastest10", "slowest10", "lapses", "mean_recip", "early_responses", "excluded_trials"];
+  const row = [pid, s.n, f(s.meanRT, 1), f(s.medianRT, 1), f(s.fastest10, 1), f(s.slowest10, 1), s.lapses, f(s.meanRecip, 4), s.earlyResponses, s.excludedTrials];
+  download("pvt_summary_" + pid + ".csv", toCSV([head, row]));
+});
+
+function sendToServer() {
+  if (!CFG.ENDPOINT) { $("sendStatus").textContent = "لطفاً فایل CSV را دانلود و برای پژوهشگر ارسال کنید."; return; }
+  fetch(CFG.ENDPOINT, { method: "POST", mode: "no-cors", body: JSON.stringify({ rows: trialRows() }) })
+    .then(() => { $("sendStatus").textContent = "داده‌ها ارسال شد. سپاس از مشارکت شما."; })
+    .catch(() => { $("sendStatus").textContent = "ارسال ناموفق بود؛ لطفاً CSV را دانلود کنید."; });
+}
+</script>
+</body>
+</html>
